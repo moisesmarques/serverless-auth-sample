@@ -1,0 +1,131 @@
+service: 'auth'
+
+provider:
+  name: aws
+  stage: ${opt:stage, 'dev'}
+  stackName: 'auth'
+  region: 'us-east-1'
+  runtime: 'python3.8'
+  environment:
+    JWT_SECRET: 'abc123'
+
+  httpApi:
+    cors:
+      allowedOrigins:
+        - https://*
+        - http://localhost:3000
+      allowedHeaders:
+        - Content-Type
+        - Authorization
+      allowedMethods:
+        - OPTIONS
+        - GET
+        - POST
+        - PUT
+        - PATCH
+        - DELETE
+      allowCredentials: true
+    authorizers:
+      simpleAuthorizer:
+        type: request
+        functionName: authorizer
+        name: simpleAuthorizer
+        resultTtlInSeconds: 300
+        enableSimpleResponses: true
+        payloadVersion: '2.0'
+        identitySource:
+          - $request.header.Authorization
+    
+  iamRoleStatements:
+    - Effect: 'Allow'
+      Action:
+        - 'dynamodb:Query'
+        - 'dynamodb:Scan'
+        - 'dynamodb:PutItem'
+        - 'dynamodb:UpdateItem'
+        - 'dynamodb:GetItem'
+        - 'dynamodb:DeleteItem'
+        - 'dynamodb:BatchGetItem'
+        - 'dynamodb:BatchWriteItem'
+        - 'ssm:DescribeParameters'
+        - 'ssm:GetParameter'
+        - 'ssm:GetParameters'
+        - 'ses:SendEmail'
+        - 'ses:SendRawEmail'
+      Resource:
+        - 'arn:aws:dynamodb:*:*:*'
+        - 'arn:aws:dynamodb:*:*:*/*/index/*'
+        - 'arn:aws:ssm:*'
+        - 'arn:aws:ses:*'
+         
+        
+plugins:
+  - serverless-python-requirements
+
+custom:
+  pythonRequirements:
+    dockerizePip: true
+    useDownloadCache: true
+    useStaticCache: true
+    layer: true
+
+functions:
+  authorizer:
+    handler: functions/authorizer.handler
+    layers:
+      - Ref: PythonRequirementsLambdaLayer
+  signIn:
+    handler: functions/signin.handler    
+    layers:
+      - Ref: PythonRequirementsLambdaLayer
+    events:
+      - httpApi:
+          path: /signin
+          method: post          
+  verify:
+    handler: functions/verify.handler
+    layers:
+      - Ref: PythonRequirementsLambdaLayer
+    events:
+      - httpApi:
+          path: /verify
+          method: post
+  private:
+    handler: functions/private.handler    
+    layers:
+      - Ref: PythonRequirementsLambdaLayer
+    events:
+      - httpApi:
+          path: /private
+          method: post
+          authorizer:
+            type: request
+            name: simpleAuthorizer
+
+resources:
+  Resources:
+    userTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: 'users'
+        AttributeDefinitions:
+          - AttributeName: 'phone'
+            AttributeType: 'S'
+        KeySchema:
+          - AttributeName: 'phone'
+            KeyType: 'HASH'
+        BillingMode: PAY_PER_REQUEST
+    otpTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: 'otp'
+        AttributeDefinitions:
+          - AttributeName: 'phone'
+            AttributeType: 'S'
+        KeySchema:
+          - AttributeName: 'phone'
+            KeyType: 'HASH'
+        BillingMode: PAY_PER_REQUEST
+        TimeToLiveSpecification:
+          AttributeName: 'ttl'
+          Enabled: true

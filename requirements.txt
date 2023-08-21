@@ -1,0 +1,6 @@
+python-jose[cryptography]
+passlib[bcrypt]
+requests==2.31.0
+dnspython==2.3.0
+urllib3==1.26.16
+random-username==1.0.2
